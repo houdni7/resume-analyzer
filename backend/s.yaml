@@ -13,7 +13,7 @@ resources:
       functionName: resume-analyzer-api
       description: AI Resume Analyzer API
       runtime: python3.10
-      handler: main.app
+      handler: main.handler
       memorySize: 512
       timeout: 60
       code: ./
