@@ -1,38 +1,73 @@
-import asyncio
-import base64
+import sys
 import json
-import uvicorn
+import os
+import base64
+import asyncio
+import traceback
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import CORS_ORIGINS
-from routers import resume, match
+sys.path.insert(0, "/code")
 
-app = FastAPI(title="Resume Analyzer API", version="1.0.0")
+_err = None
+_app = None
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+try:
+    from config import CORS_ORIGINS
+except Exception:
+    _err = "CONFIG_FAIL: " + traceback.format_exc()
+    CORS_ORIGINS = ["*"]
 
-app.include_router(resume.router)
-app.include_router(match.router)
+if not _err:
+    try:
+        from routers import resume, match
+    except Exception:
+        _err = "ROUTER_FAIL: " + traceback.format_exc()
 
+if not _err:
+    try:
+        _app = FastAPI(title="Resume Analyzer API", version="1.0.0")
+        _app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS,
+                            allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+        _app.include_router(resume.router)
+        _app.include_router(match.router)
 
-@app.get("/api/health")
-async def health():
-    return {"status": "ok"}
+        @_app.get("/api/health")
+        async def health():
+            return {"status": "ok"}
+
+        @_app.get("/api/ping")
+        async def ping():
+            return {"ok": True}
+    except Exception:
+        _err = "APP_FAIL: " + traceback.format_exc()
 
 
 def handler(event, context):
-    method = event.get("method", "GET")
-    path = event.get("path", "/")
+    try:
+        if isinstance(event, bytes):
+            event = json.loads(event.decode("utf-8"))
+        elif isinstance(event, str):
+            event = json.loads(event)
+    except Exception:
+        return {"statusCode": 500, "isBase64Encoded": False,
+                "headers": {"content-type": "text/plain"},
+                "body": "EVENT_PARSE_FAIL"}
+
+    if _err:
+        return {"statusCode": 500, "isBase64Encoded": False,
+                "headers": {"content-type": "text/plain"}, "body": _err}
+
+    request_context = event.get("requestContext", {})
+    http_ctx = request_context.get("http", {})
+
+    path = (event.get("path") or event.get("rawPath") or
+            http_ctx.get("path") or "/")
+    method = (event.get("method") or event.get("httpMethod") or
+              http_ctx.get("method") or "GET")
+
     headers_raw = event.get("headers", {})
-    query = event.get("queryParameters", {})
     body = event.get("body", "")
     is_base64 = event.get("isBase64Encoded", False)
 
@@ -41,44 +76,49 @@ def handler(event, context):
     elif isinstance(body, str):
         body = body.encode("utf-8")
 
-    raw_headers = [(str(k).encode(), str(v).encode()) for k, v in headers_raw.items()]
-    query_string = "&".join(f"{k}={v}" for k, v in query.items()).encode()
+    raw_headers = [(str(k).lower().encode(), str(v).encode()) for k, v in headers_raw.items()]
+    query = event.get("queryParameters") or event.get("queryStringParameters") or {}
+    if isinstance(query, str):
+        query = {}
+    query_string = "&".join(f"{k}={v}" for k, v in query.items() if v is not None).encode()
 
     scope = {
-        "type": "http",
-        "method": method.upper(),
-        "path": path,
-        "raw_path": path.encode(),
-        "query_string": query_string,
-        "headers": raw_headers,
-        "scheme": "https",
-        "server": ("", 80),
-        "client": ("", 0),
+        "type": "http", "asgi": {"version": "3.0"},
+        "method": method.upper(), "path": path,
+        "raw_path": path.encode(), "query_string": query_string,
+        "headers": raw_headers, "scheme": "https",
+        "server": ("fc", 80), "client": ("fc", 0),
         "http_version": "1.1",
     }
 
-    response_status = 200
-    response_headers = {}
-    response_body = []
+    rstatus = 200
+    rheaders = {}
+    rbody = []
 
     async def receive():
         return {"type": "http.request", "body": body, "more_body": False}
 
     async def send(message):
-        nonlocal response_status, response_headers, response_body
+        nonlocal rstatus, rheaders, rbody
         if message["type"] == "http.response.start":
-            response_status = message["status"]
+            rstatus = message["status"]
             for h in message.get("headers", []):
-                response_headers[h[0].decode()] = h[1].decode()
+                rheaders[h[0].decode()] = h[1].decode()
         elif message["type"] == "http.response.body":
             if message.get("body"):
-                response_body.append(message["body"])
+                rbody.append(message["body"])
 
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(app(scope, receive, send))
-    loop.close()
+    async def _run():
+        await _app(scope, receive, send)
 
-    raw_body = b"".join(response_body)
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.run_until_complete(_run())
+
+    raw_body = b"".join(rbody)
     try:
         body_str = raw_body.decode("utf-8")
         is_base = False
@@ -86,13 +126,9 @@ def handler(event, context):
         body_str = base64.b64encode(raw_body).decode("utf-8")
         is_base = True
 
-    return {
-        "statusCode": response_status,
-        "headers": response_headers,
-        "body": body_str,
-        "isBase64Encoded": is_base,
-    }
+    return {"statusCode": rstatus, "headers": rheaders, "body": body_str, "isBase64Encoded": is_base}
 
 
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
