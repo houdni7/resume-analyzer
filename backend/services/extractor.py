@@ -1,7 +1,11 @@
 import json
 import re
 
-import dashscope
+try:
+    import dashscope
+    _has_dashscope = True
+except ImportError:
+    _has_dashscope = False
 
 from config import DASHSCOPE_API_KEY, DASHSCOPE_MODEL
 from models.schemas import (
@@ -62,7 +66,7 @@ def _clean_json(text: str) -> str:
 
 
 def extract_resume_info(resume_text: str) -> ResumeAnalysis:
-    if not DASHSCOPE_API_KEY:
+    if not DASHSCOPE_API_KEY or not _has_dashscope:
         return _fallback_extract(resume_text)
 
     prompt = EXTRACT_PROMPT.replace("{resume_text}", resume_text[:3000])

@@ -2,12 +2,18 @@ import re
 import hashlib
 from io import BytesIO
 
-import fitz
+try:
+    import fitz
+    _has_fitz = True
+except ImportError:
+    _has_fitz = False
 
 from models.schemas import ResumeRecord, ResumeStructured
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
+    if not _has_fitz:
+        return ""
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     pages = []
     for page in doc:
