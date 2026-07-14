@@ -45,8 +45,8 @@ async def match_resume(body: dict):
 
     # try AI comment
     try:
-        from services.extractor import DASHSCOPE_API_KEY, DASHSCOPE_MODEL
-        import dashscope
+        from config import DASHSCOPE_API_KEY, DASHSCOPE_MODEL
+        import urllib.request
 
         if DASHSCOPE_API_KEY:
             prompt = f"""你是一个专业的简历匹配助手。请根据以下信息给出60字以内的简历匹配评价。
@@ -60,15 +60,15 @@ async def match_resume(body: dict):
 缺失技能：{', '.join(result.missing_skills[:5])}
 
 请给出简短评价："""
-
-            resp = dashscope.Generation.call(
-                api_key=DASHSCOPE_API_KEY,
-                model=DASHSCOPE_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                result_format="message",
+            body = json.dumps({"model": DASHSCOPE_MODEL, "messages": [{"role": "user", "content": prompt}]}).encode()
+            req = urllib.request.Request(
+                "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                data=body,
+                headers={"Authorization": f"Bearer {DASHSCOPE_API_KEY}", "Content-Type": "application/json"},
             )
-            if resp.status_code == 200:
-                result.ai_comment = resp.output.choices[0].message.content.strip()
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+                result.ai_comment = data["choices"][0]["message"]["content"].strip()
     except Exception:
         pass
 

@@ -2,23 +2,18 @@ import re
 import hashlib
 from io import BytesIO
 
-try:
-    import fitz
-    _has_fitz = True
-except ImportError:
-    _has_fitz = False
+from pypdf import PdfReader
 
 from models.schemas import ResumeRecord, ResumeStructured
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
-    if not _has_fitz:
-        return ""
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    reader = PdfReader(BytesIO(file_bytes))
     pages = []
-    for page in doc:
-        pages.append(page.get_text("text"))
-    doc.close()
+    for page in reader.pages:
+        text = page.extract_text()
+        if text:
+            pages.append(text)
     return "\n".join(pages)
 
 
