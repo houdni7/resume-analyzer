@@ -14,13 +14,9 @@ resources:
       description: AI Resume Analyzer API
       runtime: python3.10
       handler: main.handler
-      memorySize: 512
-      timeout: 60
+      memorySize: 1024
+      timeout: 120
       code: ./
-      build:
-        commands:
-          - pip install -r requirements.txt -t . 
-          - 'find . -name "*.dist-info" -exec rm -rf {} + 2>/dev/null; true'
       environmentVariables:
         DASHSCOPE_API_KEY: ${env(DASHSCOPE_API_KEY)}
         DASHSCOPE_MODEL: qwen-plus
