@@ -17,6 +17,9 @@ resources:
       memorySize: 512
       timeout: 60
       code: ./
+      build:
+        commands:
+          - pip install -r requirements.txt -t .
       environmentVariables:
         DASHSCOPE_API_KEY: ${env(DASHSCOPE_API_KEY)}
         DASHSCOPE_MODEL: qwen-plus
