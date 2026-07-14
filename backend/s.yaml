@@ -1,0 +1,36 @@
+edition: 3.0.0
+name: resume-analyzer
+access: default
+
+vars:
+  region: cn-hangzhou
+
+resources:
+  resume-analyzer-fc:
+    component: fc3
+    props:
+      region: ${vars.region}
+      functionName: resume-analyzer-api
+      description: AI Resume Analyzer API
+      runtime: python3.10
+      handler: main.handler
+      memorySize: 512
+      timeout: 60
+      code: ./
+      environmentVariables:
+        DASHSCOPE_API_KEY: ${env(DASHSCOPE_API_KEY)}
+        DASHSCOPE_MODEL: qwen-plus
+        REDIS_URL: redis://localhost:6379/0
+        CACHE_TTL: "3600"
+      triggers:
+        - triggerName: httpTrigger
+          triggerType: http
+          triggerConfig:
+            methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            authType: anonymous
+            disableURLInternet: false
