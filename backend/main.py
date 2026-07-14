@@ -1,6 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from mangum import Mangum
 
 from config import CORS_ORIGINS
 from routers import resume, match
@@ -24,10 +25,7 @@ async def health():
     return {"status": "ok"}
 
 
-# handler for Alibaba Cloud FC
-def handler(event, context):
-    return app
-
+handler = Mangum(app)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
